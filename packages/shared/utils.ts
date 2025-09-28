@@ -1,23 +1,23 @@
 export function getCurrentTime(): number {
-  return performance.now();
+  return performance.now()
 }
 
-export function isArray(sth: any) {
-  return Array.isArray(sth);
+export function isArray(sth: unknown) {
+  return Array.isArray(sth)
 }
 
-export function isNum(sth: any) {
-  return typeof sth === "number";
+export function isNum(sth: unknown) {
+  return typeof sth === 'number'
 }
 
-export function isObject(sth: any) {
-  return typeof sth === "object";
+export function isObject(sth: unknown) {
+  return typeof sth === 'object'
 }
 
-export function isFn(sth: any) {
-  return typeof sth === "function";
+export function isFn(sth: unknown) {
+  return typeof sth === 'function'
 }
 
-export function isStr(sth: any) {
-  return typeof sth === "string";
+export function isStr(sth: unknown) {
+  return typeof sth === 'string'
 }

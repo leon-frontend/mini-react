@@ -85,6 +85,9 @@ export default [
       // 与 Prettier 兼容的规则（禁用分号相关规则）
       semi: 'off',
       '@typescript-eslint/semi': 'off',
+
+      // 允许表达式语句
+      '@typescript-eslint/no-unused-expressions': 'off',
     },
   },
 
