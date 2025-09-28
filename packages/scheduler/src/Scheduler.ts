@@ -1,6 +1,6 @@
-// todo: 该文件要实现一个基于 JS 的单线程任务调度器
+// ! 该文件要实现一个基于 JS 的单线程任务调度器
 import { getCurrentTime } from 'shared/utils'
-import {
+import type {
   NoPriority,
   ImmediatePriority,
   UserBlockingPriority,
@@ -13,7 +13,7 @@ import {
 // 函数执行完就返回 null 或 undefined；但是若函数还没执行完就继续返回 callback 函数
 type Callback = (args: boolean) => Callback | null | undefined
 
-// 任务
+// 任务类型
 export type Task = {
   id: number
   callback: Callback | null
@@ -33,10 +33,10 @@ let currentTaskPriority: PriorityLevel = NoPriority
 // todo: scheduleCallback 函数用于执行任务（执行函数），也是任务调度器的入口函数
 function scheduleCallback(priorityLevel: PriorityLevel, callback: Callback) {}
 
-/*
-  todo: cancelCallback 函数用于取消某个任务
-  方法思想：将 task.callback 执行函数的值设置为 null，当这个任务位于堆顶时，通过判断是否为 null 值进行删除
-*/
+/**
+ *  cancelCallback 函数用于取消某个任务
+ *  @description 将 task.callback 执行函数的值设置为 null，当这个任务位于堆顶时，通过判断是否为 null 值进行删除
+ */
 function cancelCallback() {
   currentTask && (currentTask.callback = null)
 }
