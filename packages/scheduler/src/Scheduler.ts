@@ -126,8 +126,10 @@ function workLoop(initialTime: number): boolean {
         // 因此，我们需要将这个已完成的任务从任务队列 taskQueue 中移除。
         // 【关键检查】：在移除前，必须检查 currentTask 是否还是堆顶任务。
         // 因为在执行 callback 的过程中，可能通过调度器插入了一个优先级更高的新任务，导致堆顶发生了变化。
-        // 如果不检查就直接 pop，可能会错误地移除那个刚刚插入的、更紧急的新任务。        if (currentTask === peek(taskQueue)) {
-        pop(taskQueue) // 若 currentTask 是堆顶任务，则从任务池中删除该任务
+        // 如果不检查就直接 pop，可能会错误地移除那个刚刚插入的、更紧急的新任务。
+        if (currentTask === peek(taskQueue)) {
+          pop(taskQueue) // 若 currentTask 是堆顶任务，则从任务池中删除该任务
+        }
       }
     } else {
       // ============== 处理无效的任务 ===============
