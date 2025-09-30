@@ -1,6 +1,12 @@
 // ! 该文件要实现一个基于 JS 的单线程任务调度器
 import { getCurrentTime, isFn } from 'shared/utils'
-import { peek, pop } from './SchedulerMinHeap'
+import { peek, pop, push } from './SchedulerMinHeap'
+import {
+  lowPriorityTimeout,
+  maxSigned31BitInt,
+  normalPriorityTimeout,
+  userBlockingPriorityTimeout,
+} from './SchedulerFeatureFlags'
 import {
   NoPriority,
   ImmediatePriority,
@@ -34,34 +40,102 @@ export type Task = {
 // 任务池，是一个小顶堆的数据结构
 const taskQueue: Array<Task> = []
 
+// 记录每一个任务的 id。该 id 用于标识唯一性
+let taskIdCounter: number = 0
+
 // 记录当前任务和当前任务的优先级
 let currentTask: Task | null = null
 let currentTaskPriority: PriorityLevel = NoPriority
 
 // 记录时间切片的起始值和时间切片的时长
-let startTime: number = -1
-let frameInterval: number = 5
+const startTime: number = -1
+const frameInterval: number = 5
 
 // 锁，记录是否有 work 正在执行任务。防止重复执行任务
 const isPerformingWork = false
+let isHostCallbackScheduled = false // 记录主线程是否有任务在执行（上锁）
 
 // ============================= 定义任务调度器相关函数 =============================
 
 /**
- * @description scheduleCallback 函数用于执行任务（执行函数），也是任务调度器的入口函数
+ * @description scheduleCallback 函数用于创建和执行任务，也是任务调度器的入口函数
+ * @param {PriorityLevel} priorityLevel 优先级
+ * @param {Callback} callback 回调函数，用于执行任务
  */
-function scheduleCallback(priorityLevel: PriorityLevel, callback: Callback) {}
+function scheduleCallback(
+  priorityLevel: PriorityLevel,
+  callback: Callback
+): void {
+  // 获取当前时间，即 startTime 的起始时间
+  const startTime = getCurrentTime()
+
+  // 动态设置任务的过期时间中的 timeout 值
+  let timeout: number
+
+  switch (priorityLevel) {
+    case ImmediatePriority:
+      timeout = -1 // 任务立即执行
+      break
+    case UserBlockingPriority:
+      timeout = userBlockingPriorityTimeout // 用户阻塞优先级任务的过期时间
+      break
+    case NormalPriority:
+      timeout = normalPriorityTimeout // 正常优先级任务的过期时间
+      break
+    case LowPriority:
+      timeout = lowPriorityTimeout // 低优先级任务的过期时间
+      break
+    case IdlePriority:
+      timeout = maxSigned31BitInt // 空闲优先级任务的过期时间，理论上永远不会过期
+      break
+    default:
+      timeout = normalPriorityTimeout // 正常优先级任务的过期时间
+      break
+  }
+
+  // 任务的过期时间，或者理解为理论上的任务执行时间，即任务在什么时候开始执行
+  const expirationTime = startTime + timeout
+
+  // 1. 创建任务
+  const newTask: Task = {
+    id: taskIdCounter++, // 创建任务的 id
+    callback, // 创建任务的回调函数
+    priorityLevel, // 创建任务的优先级
+    startTime, // 创建任务的开始时间
+    expirationTime, // 创建任务的结束时间
+    sortIndex: -1, // 创建任务的排序索引(初始值为 -1)
+  }
+
+  // 设置任务的排序索引，expirationTime 值越小，表示越优先执行，并且排序索引值越小表示越靠近堆顶元素
+  newTask.sortIndex = expirationTime
+
+  // 2. 将任务插入任务池中
+  push(taskQueue, newTask)
+
+  // 3. 执行任务，确保在执行任务之前，没有其他任务在执行
+  if (!isHostCallbackScheduled && !isPerformingWork) {
+    isHostCallbackScheduled = true // 设置为 true，表示主线程有任务在执行（上锁）
+    requestHostCallback() // 主线程开始执行任务
+  }
+}
+
+/**
+ * @description requestHostCallback 函数用于请求主线程执行任务
+ * @param callback 回调函数，用于执行任务
+ */
+function requestHostCallback() {}
 
 /**
  *  该函数用于取消某个任务
  *  @description 将 task.callback 执行函数的值设置为 null，当这个任务位于堆顶时，通过判断是否为 null 值（无效任务）进行删除
  */
-function cancelCallback() {
+function cancelCallback(): void {
   currentTask && (currentTask.callback = null)
 }
 
 /**
  * @description 该函数用于获取当前任务的优先级
+ * @return {PriorityLevel} 返回值用于获取当前任务的优先级
  */
 function getCurrentPriorityLevel(): PriorityLevel {
   return currentTaskPriority
@@ -69,8 +143,9 @@ function getCurrentPriorityLevel(): PriorityLevel {
 
 /**
  * @description shouldYieldToHost 函数用于判断是否将控制权交还给主线程
+ * @return {boolean} 返回值若需要将控制权交还给主线程，则返回 true；若不需要将控制权交还给主线程，则返回 false
  */
-function shouldYieldToHost() {
+function shouldYieldToHost(): boolean {
   const timeElapsed = getCurrentTime() - startTime
   // 判断时间切片是否消耗完毕
   if (timeElapsed < frameInterval) return false
@@ -79,8 +154,8 @@ function shouldYieldToHost() {
 
 /**
  * @description workLoop 函数用于循环执行多个 task 任务。一个 work 就是一个时间切片，一个时间切片内会执行多个 task 任务。
- * @param initialTime 时间切片的起始值
- * @returns 返回值用于判断是否需要继续执行任务。若需要继续执行任务，则返回 true；若不需要继续执行任务，则返回 false
+ * @param {number} initialTime 时间切片的起始值
+ * @return {boolean} 返回值用于判断是否需要继续执行任务。若需要继续执行任务，则返回 true；若不需要继续执行任务，则返回 false
  */
 function workLoop(initialTime: number): boolean {
   // 记录时间切片的起始值
@@ -120,7 +195,7 @@ function workLoop(initialTime: number): boolean {
         // 2. 退出 workLoop，将控制权交还给浏览器，等待下一次时间切片。
         // return true 告诉调度器：“工作还没完，请在未来继续调度我”。
         currentTask.callback = continuationCallback // 更新任务，准备在未来的时间切片中继续执行
-        return true
+        return true // 返回 true 告诉调度器：“工作还没完，请在未来继续调度我”。
       } else {
         // 代码走到这里时，代表 callback 函数执行后返回了 null 或 undefined，说明该任务已经“彻底完成”，没有后续工作了。
         // 因此，我们需要将这个已完成的任务从任务队列 taskQueue 中移除。
